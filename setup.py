@@ -1,5 +1,5 @@
 from distutils.core import setup
-setup(name='python_utilities',
+setup(name='mpi4pydistributor',
       version='0.1',
-      py_modules=['mpi4py_distributor'],
+      py_modules=['mpi4pydistributor'],
       )

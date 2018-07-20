@@ -6,7 +6,7 @@ Notes:
     No cleanup, so if somehing breaks it may hang
 
 Add to main program:
-import mpi4py_distributor as mpi
+import mpi4pydistributor as mpi
 '''
 
 #------------------------------------------------------------------------------
