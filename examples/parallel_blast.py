@@ -13,6 +13,7 @@ def arguments():
     parser.add_argument("input_file", type=str, help="Input file with one fasta file per line. (Including full path.)")
     parser.add_argument("output_folder", type=str, help="Folder to store results and intermediate files")
     parser.add_argument("--eValue", type=float, help="e-value cutoff for BLASTp", default=10e-6)
+    parser.add_argument("--dbsize", type=str, help="Effective dbsize for blast", default="0")
     args = parser.parse_args()
 
     return args
@@ -72,8 +73,10 @@ def round_blast((i, all_js)):
         results_file = os.path.join(results_folder,  ID_i + '_' + ID_j + '_blastp_results.tsv')
         if not os.path.isfile(results_file):
             # blast i vs j
-            command = ['blastp', '-query', fasta_file_j, '-db', dbname, '-dbsize', str(dbsize), '-evalue', args.eValue, '-outfmt',  '6 qseqid sseqid qlen slen pident evalue bitscore', '-out', results_file] 
-            subprocess.call(command)
+            command = ['blastp', '-query', fasta_file_j, '-db', dbname, '-dbsize', str(dbsize), '-evalue', args.eValue, 
+                       '-outfmt',  '"6 qseqid sseqid qlen slen pident evalue bitscore"', '-out', results_file] 
+            command = ' '.join(command)
+            result = subprocess.check_output(command, stderr=subprocess.STDOUT, shell=True)
 
     # delete db
     delete_blastdb(dbname)
@@ -88,6 +91,7 @@ args = arguments()
 db_folder = os.path.join(args.output_folder, 'blast_db')
 
 if mpi.rank == 0:
+    print(args.dbsize)
     # make folder for dbs
     if not os.path.exists(db_folder):
         os.makedirs(db_folder)
@@ -97,6 +101,7 @@ if mpi.rank == 0:
     with open(args.input_file, 'r') as handle:
         for line in handle:
             list_of_fasta_files.append(os.path.abspath(line.strip()))
+    n = len(list_of_fasta_files)
 
 else: 
     list_of_fasta_files = None
@@ -106,18 +111,21 @@ list_of_fasta_files = mpi.comm.bcast(list_of_fasta_files, root=0)
 
 # calculate effective dbsize
 # total length of all seqences across all files
-if mpi.rank == 0:
-    n = len(list_of_fasta_files)
-    all_lengths = mpi.master_task_distributer(range(n)) 
-    dbsize = sum(all_lengths)
-       
+if args.dbsize == '0':
+    if mpi.rank == 0:
+        print("calculating dbsize")
+        all_lengths = mpi.master_task_distributer(range(n)) 
+        dbsize = sum(all_lengths)
+    else:
+        mpi.worker_task_receiver(sequence_length)
+        dbsize = None
+
+    # scatter dbsize to all workers
+    dbsize = mpi.comm.bcast(dbsize, root=0)
+
 else:
-    mpi.worker_task_receiver(sequence_length)
-    dbsize = None
-
-# scatter dbsize to all workers
-dbsize = mpi.comm.bcast(dbsize, root=0)
-
+    dbsize = args.dbsize
+       
 # now, blastp
 if mpi.rank == 0:
     L = combinations(n)
@@ -125,7 +133,6 @@ if mpi.rank == 0:
 
 else:
     mpi.worker_task_receiver(round_blast)
-
 
 
 
