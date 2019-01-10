@@ -34,9 +34,9 @@ def enum(*sequential, **named):
 tags = enum('READY', 'DONE', 'EXIT', 'START')
 
 #------------------------------------------------------------------------------
-def master_task_distributer(tasks, function=lambda x: x, args=[], leave=0):
+def master_task_distributer(tasks, function=lambda x: x, args=[], leave=0, verbose=False):
     '''
-    Master process executesthis code. 
+    Master process executes this code. 
     `tasks`         iterables of tasks for worker processes (e.g. input file names)
     `function`      a function the master executes after recieving each result from a worker 
     `args`          a list/dictionary of arguments to `function`
@@ -61,12 +61,14 @@ def master_task_distributer(tasks, function=lambda x: x, args=[], leave=0):
 
         if tag == tags.EXIT:
             # Worker received exit tag and exited
-            print '%i: Worker %i exited.'%(rank, source)
+            if verbose:
+                print '%i: Worker %i exited.'%(rank, source)
             closed_workers += 1
 
         elif tag == tags.DONE:
             # Worker finished task and returned result
-            print '%i: Master received DONE Signal from worker %i'%(rank, source)
+            if verbose:
+                print '%i: Master received DONE Signal from worker %i'%(rank, source)
 
             # Execute master's function
             all_results.append(function(data, *args))
@@ -75,41 +77,49 @@ def master_task_distributer(tasks, function=lambda x: x, args=[], leave=0):
                 # still tasks to be sent to worker
                 task = tasks[task_index]
                 comm.send(task, dest=source, tag=tags.START)
-                print '%i: Sending task %i to worker %i'%(rank, task_index, source)
+                if verbose:
+                    print '%i: Sending task %i to worker %i'%(rank, task_index, source)
                 task_index += 1
             else:
                 # all tasks already complete/sent
                 # tell worker to exit
                 comm.send(None, dest=source, tag=tags.EXIT)
-                print '%i: No more jobs, sending Exit Signal to worker %i'%(rank, source)
+                if verbose:
+                    print '%i: No more jobs, sending Exit Signal to worker %i'%(rank, source)
 
         elif tag == tags.READY and task_index < len(tasks):
             # Worker is ready to receive task, and more tasks are available 
             task = tasks[task_index]
             task_index += 1
-            print '%i: Received ready signal from worker %i'%(rank, source)
+            if verbose:
+                print '%i: Received ready signal from worker %i'%(rank, source)
             comm.send(task, dest=source, tag=tags.START)
-            print '%i: Sending task %i to worker %i'%(rank, task_index, source)
+            if verbose:
+                print '%i: Sending task %i to worker %i'%(rank, task_index, source)
 
         else:
             # No jobs
             # Tell worker to exit
             comm.send(None, dest=source, tag=tags.EXIT)
-            print '%i: No more jobs, sending Exit Signal to worker %i'%(rank, source)
+            if verbose:
+                print '%i: No more jobs, sending Exit Signal to worker %i'%(rank, source)
         
-        print '%i: %i tasks left'%(rank, len(tasks) - task_index)
-        print '%i: %i workers still busy'%(rank, num_workers - closed_workers)
+        if verbose:
+            print '%i: %i tasks left'%(rank, len(tasks) - task_index)
+            print '%i: %i workers still busy'%(rank, num_workers - closed_workers)
 
     print '%i: Master finished sending and receiving'%rank
     return all_results      # List of results from all the "master" function on the workers results. 
 
-def worker_task_receiver(function):
+def worker_task_receiver(function, verbose=False):
     '''
     Worker processors execute code below
     `function`      A function that accepts a single task from the master 
                     and is the excecuted by the worker. 
     '''
-    print '%i: Worker on %s'%(rank, name)
+    if verbose:
+        print '%i: Worker on %s'%(rank, name)
+    
     comm.send(None, dest=0, tag=tags.READY)
 
     while True:
@@ -118,14 +128,16 @@ def worker_task_receiver(function):
 
         if tag == tags.START:
             # Do the work here
-            print '%i: Worker received'%rank, task, 'to do.'
+            if verbose:
+                print '%i: Worker received'%rank, task, 'to do.'
             # Main is "THE" function per task
             result = function(task)
             comm.send(result, dest=0, tag=tags.DONE)
         elif tag == tags.EXIT:
             break
 
-    print '%i: Worker exiting.'%rank
+    if verbose:
+        print '%i: Worker exiting.'%rank
     comm.send(None, dest=0, tag=tags.EXIT)
 
 
